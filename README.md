@@ -1,7 +1,12 @@
 # OAUDIT
 A simple tool kit to configure and audit linux firewalls (ufw)
 
-FILE STRUCTURE: 
+DEPENDENCIES:
+
+1) sudo apt install figlet
+
+
+DIRECTORY STRUCTURE: 
   
 OAUDIT   
 |  
