@@ -1,0 +1,210 @@
+#!/bin/bash
+
+bold="\e[1m"
+black="\e[30m"
+red="\e[31m"
+normal="\e[0m"
+aqua="\e[36m"
+purple="\e[35m"
+lightyellow="\e[93m"
+orange="\e[33m"
+RED="\e[41m"
+GREEN="\e[42m"
+
+function start_ufw(){
+	{ sudo ufw enable &> /dev/null ;} || { echo "[-] FAILED TO START UFW.....EXITTING" && exit 1 ;}
+}
+
+function display_status(){
+	echo -e "\n${bold}[-] DISPLAYING STATUS${normal}\n "
+	sudo ufw status numbered
+}
+
+function rogue_ip(){
+	flag="0"
+	if [ ! -f rogue_ip.txt ]
+	then
+		echo -e "\n${bold}${red}File does not Exist please create one${normal}\n"
+		return
+	fi
+	for ip in $(cat rogue_ip.txt)
+	do
+	echo -e "\n${bold}[>] Checking rogue ip: $ip ${normal}"
+	if sudo ufw status verbose | grep -q -e "\b$ip\b" 
+	then
+		flag="1"
+		echo -e "\n${RED}[!] $ip FOUND PLEASE CONFIRM DENY ACTION [!]${normal}\n"
+		echo -e "${purple}To (Your Machine)          Action            From${normal}"
+		sudo ufw status verbose | grep -e "\b$ip\b"
+	else
+		echo -e  "\n${bold}[+] $ip not found you are safe ${normal}\n"
+	fi
+	done
+	
+	if [ "$flag" = "0" ]
+	then
+		echo -e "\n${GREEN}[-] NO ROGUE IP FOUND${normal}\n"
+	fi
+}
+
+function deny_list(){
+	echo -e "\n${bold}[>] Checking DENY rules${normal}"
+	if sudo ufw status verbose | grep -q -e "\bDENY\b" 
+	then
+		echo -e "\n${RED}[!] DENY RULE FOUND [!]${normal}\n"
+		echo -e "${purple}To (Your Machine)          Action            From${normal}"
+		sudo ufw status verbose | grep -e "\bDENY\b"
+	else
+		echo -e "\n${GREEN}[-] No rogue DENY Rules found${normal}\n"
+	fi
+}
+
+function allow_list(){
+	echo -e "\n${bold}[>] Checking ALLOW rules${normal}"
+	if sudo ufw status verbose | grep -q -e "\bALLOW\b" 
+	then
+		echo -e "\n${RED}[!] ALLOW RULE FOUND [!]${normal}\n"
+		echo -e "${purple}To (Your Machine)          Action            From${normal}"
+		sudo ufw status verbose | grep -e "\bALLOW\b"
+	else
+		echo -e "\n${GREEN}[-] No rogue ALLOW Rules found${normal}\n"
+	fi
+}
+
+function create_report(){
+	echo "============FIREWALL AUDIT REPORT============" > report.txt
+	echo -e "\nDENY RULES:\n" >> report.txt
+	deny_list >> report.txt
+	echo -e "\nALLOW RULES:\n" >> report.txt
+	allow_list >> report.txt
+	echo -e "\nROGUE IP:\n" >> report.txt
+	rogue_ip >>report.txt
+	echo -e "\n${GREEN} REPORT GENERATED SUCCESSFULLY${normal}\n"
+}
+
+function audit(){
+	while [ 1=1 ]
+	do
+		echo -e "\n${bold}${aqua}------------------------AUDIT MENU------------------------${normal}\n"
+		echo -e " ${red}============================================== "
+		echo -e " | ADD ROGUE IP's TO TEXT FILE (rogue_ip.txt) | "
+		echo -e " ==============================================${normal} "
+		echo -n -e "${bold}${aqua}\n1) Rogue IP \n2) DENY LIST \n3) ALLOW LIST \n4) CREATE REPORT \n99)Exit \n${normal}\nEnter option: "
+		read opt
+		case $opt in
+		1) rogue_ip && { 
+		echo -n -e "\n${bold}Press Enter to show audit menu: ${normal}"
+		read
+		}|| echo -e "${RED}[!] Error checking for rogue ip${normal}" ;;
+		2) deny_list && { 
+		echo -n -e "\n${bold}Press Enter to show audit menu: ${normal}"
+		read
+		} || echo -e "${RED}[!] Error checking deny list${normal}" ;;
+		3) allow_list && { 
+		echo -n -e "\n${bold}Press Enter to show audit menu: ${normal}"
+		read
+		}|| echo -e "${RED}[!] Error checking deny list${normal}" ;;
+		4) create_report && { 
+		echo -n -e "\n${bold}Press Enter to show audit menu: ${normal}"
+		read
+		}|| echo -e "${RED}[!] Error creating report${normal}" ;;
+		99) break ;;
+		*) echo -e "\n${red}[-] Enter valid option${normal}\n" && sleep 1
+		esac
+	done
+}
+
+function service(){
+	echo -n -e "\n${bold}[->] Enter service you want to allow/deny (port number or service): ${normal} "
+	read service
+	echo -n -e "\n${bold}[-] Allow (0) Deny (1): ${normal}"
+	read option
+	
+	if [ "$option" = "0" ] 
+	then
+		echo -e "\n${lightyellow}Allowing service $service${normal}\n"
+		{ { sudo ufw allow $service &> /dev/null && echo -e "${RED}Service Allowed through firewall ${normal}" ;} || { echo -e "${red}[-] FAILED TO ALLOW SERVICE ${normal}" ;} } 
+	elif [ "$option" = "1" ]
+	then	
+		echo -e "\n${lightyellow}Denying service $service${normal}\n"
+		{ { sudo ufw deny $service &> /dev/null && echo -e "${RED}Service Denied through firewall ${normal}" ;} || { echo -e "${red}[-] FAILED TO DENY SERVICE ${normal}" ;} }	 
+	else
+		echo -e "\n${red}Invalid option${normal}"
+	fi
+}
+
+function specific_ip_allow(){
+	echo -n -e "\n${bold}[>] Enter the ip (requester) : ${normal}"
+	read ip
+	service=any
+	
+	echo -n -e "\n${bold}[>] Any special service? no(0) yes(1): ${normal}"
+	read option
+	
+	if [ "$option" = "1" ]
+	then
+		echo -n -e "\n${bold}[->] Enter service you want to deny (port number or service): ${normal}\n"
+		read service
+		{ { sudo ufw allow from $ip to any port $service &> /dev/null && echo -e "\n${RED}[+] Allowed $ip to connect to port/service $service" ${normal};} || { echo -e "\n${red}[-] FAILED TO ALLOW ip $ip at port/service $service ${normal}\n" ;} }
+	elif [ "$option" = "0" ]
+	then
+		{ { sudo ufw allow from $ip to any &> /dev/null && echo -e "\n${RED}[+] Allowed $ip to connect to anywhere on your machine" ${normal};} || { echo -e "\n \n${red}[-] FAILED TO ALLOW $ip to any port ${normal}\n" ;} }
+	else
+		echo -e "\n${red}[-] Please input valid option${normal}"
+	fi	
+}
+
+function delete(){
+	sudo ufw status numbered
+	echo -n -e "\n${bold}Enter the rule to delete: ${normal}"
+	read number
+	sudo ufw delete $number || echo -e "\n${red}[-] FAILED TO DELETE RULE ${normal}"
+}
+
+#MAIN
+
+figlet " OAUDIT "
+
+if [ ! $EUID = 0 ]
+then
+	echo -n -e "\n${RED}${black}[!]YOU NEED TO BE ROOT (sudo)${normal}\n"
+	exit 0
+fi 
+
+if ufw status | grep -q "inactive" 
+then
+	echo -n -e "\n${bold}${red}[!] STARTING UFW press Enter to continue else Ctrl+C: ${normal}\n "
+	read opt
+	start_ufw 
+fi
+
+echo -e "${bold}${red}[!] UFW IS ENABLED AND RUNNING DEFAULT RULES${normal}"
+
+
+while [ 1=1 ]
+do
+	echo -e "\n${bold}${orange}------------------------MAIN MENU------------------------${normal}\n"
+	echo -n -e "${bold}${aqua}1) Display Status | Rules \n2) Audit \n3) Allow/Deny by port/service \n4) Allow specific ip \n5) Delete \n99) Exit \n${normal}\nSelect Option: " 
+	read opt
+	case $opt in
+	1) display_status && { 
+		echo -n -e "\n${bold}Press Enter to show main menu: ${normal}"
+		read
+		};;
+	2) audit ;;
+	3) service && { 
+		echo -n -e "\n${bold}Press Enter to show main menu: ${normal}"
+		read
+		};;
+	4) specific_ip_allow && { 
+		echo -n -e "\n${bold}Press Enter to show main menu: ${normal}"
+		read
+		};;
+	5) delete && { 
+		echo -n -e "\n${bold}Press Enter to show main menu: ${normal}"
+		read
+		};;
+	99) exit 1 ;;
+	*) echo -e "\n${red}[-] Enter appropriate option${normal} \n" && sleep 1 && clear
+	esac
+done
